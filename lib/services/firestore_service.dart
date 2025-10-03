@@ -64,7 +64,11 @@ class FirestoreService {
 
   Future<String?> getPlaylistIdForLevel(String level) async {
     final snapshot = await _firestore.collection('playlists').doc(level).get();
+
+      print('Playlist ID for level $level: ${snapshot['playlistId']}');
     if (snapshot.exists) {
+            print('Playlist ID for level $level: ${snapshot['playlistId']}');
+
       return snapshot['playlistId'];
     }
     return null;
@@ -75,4 +79,62 @@ class FirestoreService {
       'remainingViews': FieldValue.increment(-1),
     });
   }
+
+  Future<int> getRemainingViews(String uid) async {
+    try {
+      final doc = await _firestore.collection("users").doc(uid).get();
+
+      if (doc.exists) {
+        return doc.data()?["remainingViews"] ?? 0;
+      } else {
+        // لو المستخدم لسه ما اتسجلش، نبدأله بعدد افتراضي مثلاً 3
+        await _firestore.collection("users").doc(uid).set({"remainingViews": 3});
+        return 3;
+      }
+    } catch (e) {
+      print("Error getting remaining views: $e");
+      return 0;
+    }
+  }
+  Future<int> getRemainingViewsForVideo(String uid, String videoId) async {
+  try {
+    final doc = await _firestore.collection("users").doc(uid).get();
+    if (doc.exists) {
+      final data = doc.data()!;
+      final videos = data["videos"] as Map<String, dynamic>? ?? {};
+      final defaultViews = data["remainingViews"] ?? 3; // هنا بناخد العدد اللي حطه ال admin
+      
+      return videos[videoId] ?? defaultViews;
+    } else {
+      // لو مفيش doc، نعمل واحد جديد
+      await _firestore.collection("users").doc(uid).set({
+        "remainingViews": 3,
+        "videos": {videoId: 3}
+      });
+      return 3;
+    }
+  } catch (e) {
+    print("Error getting remaining views: $e");
+    return 0;
+  }
+}
+ /// ✅ ينقص مشاهدة من فيديو محدد
+  Future<void> decrementRemainingViewsForVideo(String uid, String videoId) async {
+    final docRef = _firestore.collection("users").doc(uid);
+
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(docRef);
+      if (!snapshot.exists) return;
+
+      final data = snapshot.data() as Map<String, dynamic>;
+      final videos = Map<String, dynamic>.from(data["videos"] ?? {});
+      final currentViews = videos[videoId] ?? (data["remainingViews"] ?? 3);
+
+      if (currentViews > 0) {
+        videos[videoId] = currentViews - 1;
+        transaction.update(docRef, {"videos": videos});
+      }
+    });
+  }
+
 }

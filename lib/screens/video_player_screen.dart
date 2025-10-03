@@ -1,43 +1,84 @@
 import 'package:flutter/material.dart';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_linkify/flutter_linkify.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/firestore_service.dart';
 
 class VideoPlayerScreen extends StatefulWidget {
   final String videoId;
   final String title;
+  final String? description;
 
-  VideoPlayerScreen({required this.videoId, required this.title});
+  const VideoPlayerScreen({
+    required this.videoId,
+    required this.title,
+    this.description,
+    Key? key,
+  }) : super(key: key);
 
   @override
-  _VideoPlayerScreenState createState() => _VideoPlayerScreenState();
+  State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
 }
 
 class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
-  late YoutubePlayerController _controller;
   final _firestoreService = FirestoreService();
+  late YoutubePlayerController _controller;
+
   bool completed = false;
+  bool allowed = false;
+  bool loading = true;
 
   @override
   void initState() {
     super.initState();
-    _controller = YoutubePlayerController(
-      initialVideoId: widget.videoId,
-      flags: YoutubePlayerFlags(autoPlay: true),
-    )..addListener(checkProgress);
+    checkViews();
   }
 
-  void checkProgress() async {
-    if (_controller.value.isReady && !_controller.value.isFullScreen) {
-      final duration = _controller.metadata.duration.inSeconds;
-      final position = _controller.value.position.inSeconds;
+  Future<void> checkViews() async {
+    final uid = FirebaseAuth.instance.currentUser!.uid;
 
-      if (duration > 0 && position >= duration - 2 && !completed) {
-        completed = true; // عشان مايتخصمش مرتين
-        final uid = FirebaseAuth.instance.currentUser!.uid;
-        await _firestoreService.decrementRemainingViews(uid);
+    final views =
+        await _firestoreService.getRemainingViewsForVideo(uid, widget.videoId);
+
+    setState(() {
+      loading = false;
+      allowed = views > 0;
+    });
+
+    if (allowed) {
+      _controller = YoutubePlayerController(
+        initialVideoId: widget.videoId,
+        flags: const YoutubePlayerFlags(
+          autoPlay: true,
+          mute: false,
+          controlsVisibleAtStart: true,
+          disableDragSeek: false,
+        ),
+      )..addListener(_videoListener);
+    }
+  }
+
+  void _videoListener() {
+    if (_controller.value.playerState == PlayerState.ended) {
+      _handleVideoEnd();
+    }
+  }
+
+  Future<void> _handleVideoEnd() async {
+    if (!completed) {
+      completed = true;
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+
+      await _firestoreService
+          .decrementRemainingViewsForVideo(uid, widget.videoId);
+
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("تم خصم مشاهدة بعد إنهاء الفيديو")),
+          const SnackBar(
+            content: Text("تم خصم مشاهدة عند انتهاء الفيديو ✅"),
+          ),
         );
       }
     }
@@ -45,19 +86,70 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   @override
   void dispose() {
-    _controller.removeListener(checkProgress);
-    _controller.dispose();
+    if (allowed) _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(widget.title)),
-      body: YoutubePlayer(
-        controller: _controller,
-        showVideoProgressIndicator: true,
+    return WillPopScope(
+      onWillPop: () async {
+        SystemChrome.setPreferredOrientations([
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.portraitDown,
+        ]);
+        return true;
+      },
+      child: Scaffold(
+        appBar: AppBar(title: Text(widget.title)),
+        body: loading
+            ? const Center(child: CircularProgressIndicator())
+            : !allowed
+                ? const Center(
+                    child: Text(
+                      "⚠️ انتهت عدد المشاهدات المسموح بها لهذا الفيديو.",
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  )
+                : Column(
+                    children: [
+                      AspectRatio(
+                        aspectRatio: 16 / 9,
+                        child: YoutubePlayer(
+                          controller: _controller,
+                          showVideoProgressIndicator: true,
+                          progressIndicatorColor: Colors.red,
+                        ),
+                      ),
+                      if (widget.description != null &&
+                          widget.description!.isNotEmpty)
+                        Expanded(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.all(12),
+                            child: Linkify(
+                              onOpen: (link) async {
+                                final url = Uri.parse(link.url);
+                                if (await canLaunchUrl(url)) {
+                                  await launchUrl(
+                                    url,
+                                    mode: LaunchMode.externalApplication,
+                                  );
+                                }
+                              },
+                              text: widget.description!,
+                              style: const TextStyle(fontSize: 14),
+                              linkStyle: const TextStyle(
+                                color: Colors.blue,
+                                decoration: TextDecoration.underline,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
       ),
     );
   }
 }
+  
