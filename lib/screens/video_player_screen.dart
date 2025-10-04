@@ -38,7 +38,6 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   Future<void> checkViews() async {
     final uid = FirebaseAuth.instance.currentUser!.uid;
-
     final views =
         await _firestoreService.getRemainingViewsForVideo(uid, widget.videoId);
 
@@ -54,19 +53,31 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           autoPlay: true,
           mute: false,
           controlsVisibleAtStart: true,
-          disableDragSeek: false,
         ),
       )..addListener(_videoListener);
     }
   }
 
   void _videoListener() {
+    if (!_controller.value.isReady || completed) return;
+
+    final position = _controller.value.position.inSeconds;
+    final duration = _controller.metadata.duration.inSeconds;
+
+    if (duration > 0) {
+      final progress = position / duration;
+
+      if (progress >= 0.9) {
+        _handleVideoCounted();
+      }
+    }
+
     if (_controller.value.playerState == PlayerState.ended) {
-      _handleVideoEnd();
+      _handleVideoCounted();
     }
   }
 
-  Future<void> _handleVideoEnd() async {
+  Future<void> _handleVideoCounted() async {
     if (!completed) {
       completed = true;
       final uid = FirebaseAuth.instance.currentUser!.uid;
@@ -76,9 +87,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("تم خصم مشاهدة عند انتهاء الفيديو ✅"),
-          ),
+          const SnackBar(content: Text("✅ تم خصم مشاهدة")),
         );
       }
     }
@@ -87,69 +96,148 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   void dispose() {
     if (allowed) _controller.dispose();
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
-        SystemChrome.setPreferredOrientations([
-          DeviceOrientation.portraitUp,
-          DeviceOrientation.portraitDown,
-        ]);
-        return true;
-      },
-      child: Scaffold(
-        appBar: AppBar(title: Text(widget.title)),
-        body: loading
-            ? const Center(child: CircularProgressIndicator())
-            : !allowed
-                ? const Center(
-                    child: Text(
-                      "⚠️ انتهت عدد المشاهدات المسموح بها لهذا الفيديو.",
-                      style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+
+    return loading
+        ? const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          )
+        : !allowed
+            ? const Scaffold(
+                body: Center(
+                  child: Text(
+                    "⚠️ انتهت عدد المشاهدات المسموح بها لهذا الفيديو.",
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              )
+            : YoutubePlayerBuilder(
+                onEnterFullScreen: () {
+                  SystemChrome.setPreferredOrientations([
+                    DeviceOrientation.landscapeLeft,
+                    DeviceOrientation.landscapeRight,
+                  ]);
+                },
+                onExitFullScreen: () {
+                  SystemChrome.setPreferredOrientations([
+                    DeviceOrientation.portraitUp,
+                    DeviceOrientation.portraitDown,
+                  ]);
+                },
+                player: YoutubePlayer(
+                  controller: _controller,
+                  showVideoProgressIndicator: true,
+                  progressIndicatorColor: Colors.red,
+                  onReady: () {
+                    _controller.addListener(_videoListener);
+                  },
+                ),
+                builder: (context, player) {
+                  return Scaffold(
+                    appBar: isLandscape ? null : AppBar(
+                      title: Text(widget.title),
+                      elevation: 0,
                     ),
-                  )
-                : Column(
-                    children: [
-                      AspectRatio(
-                        aspectRatio: 16 / 9,
-                        child: YoutubePlayer(
-                          controller: _controller,
-                          showVideoProgressIndicator: true,
-                          progressIndicatorColor: Colors.red,
-                        ),
-                      ),
-                      if (widget.description != null &&
-                          widget.description!.isNotEmpty)
-                        Expanded(
-                          child: SingleChildScrollView(
-                            padding: const EdgeInsets.all(12),
-                            child: Linkify(
-                              onOpen: (link) async {
-                                final url = Uri.parse(link.url);
-                                if (await canLaunchUrl(url)) {
-                                  await launchUrl(
-                                    url,
-                                    mode: LaunchMode.externalApplication,
-                                  );
-                                }
-                              },
-                              text: widget.description!,
-                              style: const TextStyle(fontSize: 14),
-                              linkStyle: const TextStyle(
-                                color: Colors.blue,
-                                decoration: TextDecoration.underline,
+                    body: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        children: [
+                          // 🎬 فيديو داخل كارت احترافي
+                          Card(
+                            elevation: 6,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    Colors.blue.shade100,
+                                    Colors.white,
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
+                                child: AspectRatio(
+                                  aspectRatio: 16 / 9,
+                                  child: player,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                    ],
-                  ),
-      ),
-    );
+                          const SizedBox(height: 16),
+
+                          // 📝 الوصف داخل كارت
+                          if (!isLandscape &&
+                              widget.description != null &&
+                              widget.description!.isNotEmpty)
+                            Expanded(
+                              child: Card(
+                                elevation: 3,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16.0),
+                                  child: SingleChildScrollView(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          "Description",
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.blue[900],
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Linkify(
+                                          onOpen: (link) async {
+                                            final url = Uri.parse(link.url);
+                                            if (await canLaunchUrl(url)) {
+                                              await launchUrl(
+                                                url,
+                                                mode: LaunchMode
+                                                    .externalApplication,
+                                              );
+                                            }
+                                          },
+                                          text: widget.description!,
+                                          style:
+                                              const TextStyle(fontSize: 14),
+                                          linkStyle: const TextStyle(
+                                            color: Colors.blue,
+                                            decoration:
+                                                TextDecoration.underline,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
   }
 }
-  

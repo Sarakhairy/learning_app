@@ -11,9 +11,19 @@ class AdminHelper {
 
   /// 1) Create Auth user via REST, returns the uid (localId)
   Future<String> createAuthUser(String email, String password) async {
-    final url = Uri.parse('https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=$firebaseWebApiKey');
-    final body = json.encode({'email': email, 'password': password, 'returnSecureToken': false});
-    final res = await http.post(url, body: body, headers: {'Content-Type': 'application/json'});
+    final url = Uri.parse(
+      'https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=$firebaseWebApiKey',
+    );
+    final body = json.encode({
+      'email': email,
+      'password': password,
+      'returnSecureToken': false,
+    });
+    final res = await http.post(
+      url,
+      body: body,
+      headers: {'Content-Type': 'application/json'},
+    );
     if (res.statusCode == 200) {
       final data = json.decode(res.body);
       final uid = data['localId'] as String;
@@ -28,50 +38,79 @@ class AdminHelper {
     required String uid,
     required String email,
     required String role, // 'student' or 'admin'
-    required String level, // e.g. "1"
+    required String year, // السنة: "1" أو "2" أو "3" أو "4"
+    required List<String> subjects, // المواد المختارة
     int remainingViews = 3,
   }) async {
     await _fire.collection('users').doc(uid).set({
       'email': email,
       'role': role,
-      'level': level,
+      'year': year,
+      'subjects': subjects,
       'deviceId': null,
       'remainingViews': remainingViews,
       'createdAt': FieldValue.serverTimestamp(),
     });
-    
   }
 
   /// Convenience: full flow (create auth + fire user doc)
-  Future<void> createStudentFull({required String email, required String password, required String level}) async {
+  Future<void> createStudentFull({
+    required String email,
+    required String password,
+    required String year,
+    required List<String> subjects,
+  }) async {
     final uid = await createAuthUser(email, password);
-    await createUserDoc(uid: uid, email: email, role: 'student', level: level);
+    await createUserDoc(
+      uid: uid,
+      email: email,
+      role: 'student',
+      year: year,
+      subjects: subjects,
+    );
   }
 }
+
 class FirestoreService {
   final _firestore = FirebaseFirestore.instance;
 
-  Future<String?> getStudentLevel() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return null;
+ Future<String?> getStudentYear() async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return null;
 
-    final snapshot = await _firestore.collection('users').doc(user.uid).get();
-    if (snapshot.exists) {
-      return snapshot['level'];
-    }
-    return null;
+  final snapshot = await _firestore.collection('users').doc(user.uid).get();
+  if (snapshot.exists) {
+    return snapshot['year'];
   }
+  return null;
+}
+ Future<Map<String, String>> getSubjectsWithPlaylists() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return {};
 
-  Future<String?> getPlaylistIdForLevel(String level) async {
-    final snapshot = await _firestore.collection('playlists').doc(level).get();
+    // 1️⃣ جيبي المواد بتاعة الطالب
+    final userDoc = await _firestore.collection("users").doc(user.uid).get();
+    final List<String> studentSubjects =
+        List<String>.from(userDoc["subjects"] ?? []);
+    final String year = userDoc["year"]; // 👈 متخزنة عندك
 
-      print('Playlist ID for level $level: ${snapshot['playlistId']}');
-    if (snapshot.exists) {
-            print('Playlist ID for level $level: ${snapshot['playlistId']}');
+    // 2️⃣ هات document الخاص بالـ year من playlists
+    final yearDoc =
+        await _firestore.collection("playlists").doc(year).get();
 
-      return snapshot['playlistId'];
+    if (!yearDoc.exists) return {};
+
+    final subjectsMap = Map<String, dynamic>.from(yearDoc["subjects"] ?? {});
+
+    // 3️⃣ فلترة المواد عشان نرجع بس اللي الطالب مسجل فيها
+    Map<String, String> result = {};
+    for (var subject in studentSubjects) {
+      if (subjectsMap.containsKey(subject)) {
+        result[subject] = subjectsMap[subject];
+      }
     }
-    return null;
+
+    return result; // 👈 { "Math": "PL123...", "Physics": "PL456..." }
   }
 
   Future<void> decrementRemainingViews(String uid) async {
@@ -88,7 +127,9 @@ class FirestoreService {
         return doc.data()?["remainingViews"] ?? 0;
       } else {
         // لو المستخدم لسه ما اتسجلش، نبدأله بعدد افتراضي مثلاً 3
-        await _firestore.collection("users").doc(uid).set({"remainingViews": 3});
+        await _firestore.collection("users").doc(uid).set({
+          "remainingViews": 3,
+        });
         return 3;
       }
     } catch (e) {
@@ -96,30 +137,48 @@ class FirestoreService {
       return 0;
     }
   }
-  Future<int> getRemainingViewsForVideo(String uid, String videoId) async {
-  try {
-    final doc = await _firestore.collection("users").doc(uid).get();
-    if (doc.exists) {
-      final data = doc.data()!;
-      final videos = data["videos"] as Map<String, dynamic>? ?? {};
-      final defaultViews = data["remainingViews"] ?? 3; // هنا بناخد العدد اللي حطه ال admin
-      
-      return videos[videoId] ?? defaultViews;
-    } else {
-      // لو مفيش doc، نعمل واحد جديد
-      await _firestore.collection("users").doc(uid).set({
-        "remainingViews": 3,
-        "videos": {videoId: 3}
-      });
-      return 3;
-    }
-  } catch (e) {
-    print("Error getting remaining views: $e");
-    return 0;
+Future<List<String>> getStudentSubjects() async {
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return [];
+
+  final snapshot = await _firestore.collection('users').doc(user.uid).get();
+  if (snapshot.exists) {
+    final data = snapshot.data()!;
+    final subjects = List<String>.from(data['subjects'] ?? []);
+    return subjects;
   }
+  return [];
 }
- /// ✅ ينقص مشاهدة من فيديو محدد
-  Future<void> decrementRemainingViewsForVideo(String uid, String videoId) async {
+
+  Future<int> getRemainingViewsForVideo(String uid, String videoId) async {
+    try {
+      final doc = await _firestore.collection("users").doc(uid).get();
+      if (doc.exists) {
+        final data = doc.data()!;
+        final videos = data["videos"] as Map<String, dynamic>? ?? {};
+        final defaultViews =
+            data["remainingViews"] ?? 3; // هنا بناخد العدد اللي حطه ال admin
+
+        return videos[videoId] ?? defaultViews;
+      } else {
+        // لو مفيش doc، نعمل واحد جديد
+        await _firestore.collection("users").doc(uid).set({
+          "remainingViews": 3,
+          "videos": {videoId: 3},
+        });
+        return 3;
+      }
+    } catch (e) {
+      print("Error getting remaining views: $e");
+      return 0;
+    }
+  }
+
+  /// ✅ ينقص مشاهدة من فيديو محدد
+  Future<void> decrementRemainingViewsForVideo(
+    String uid,
+    String videoId,
+  ) async {
     final docRef = _firestore.collection("users").doc(uid);
 
     await _firestore.runTransaction((transaction) async {
@@ -136,5 +195,4 @@ class FirestoreService {
       }
     });
   }
-
 }
