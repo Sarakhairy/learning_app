@@ -67,7 +67,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     if (duration > 0) {
       final progress = position / duration;
 
-      if (progress >= 0.9) {
+      if (progress >= 0.5) {
         _handleVideoCounted();
       }
     }

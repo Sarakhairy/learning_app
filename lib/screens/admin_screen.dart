@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -26,10 +27,22 @@ class _AdminAddStudentScreenState extends State<AdminAddStudentScreen> {
   final FirebaseFirestore _fire = FirebaseFirestore.instance;
 
   final Map<String, List<String>> subjectsByYear = {
-    "1": ["foundation", "organic chemistry", "anatomy"],
-    "2": ["basics of Molecular biology", "systemic physiology"],
-    "3": ["forensic chemistry", "basic introduction of virus and medical fungi"],
-    "4": ["histopathology and cytology", "blood bank", "parasitology", "immunology"],
+    "1": ["foundation", "organic chemistry", "anatomy", 'health informatics'],
+    "2": [
+      "basics of Molecular biology",
+      "systemic physiology",
+      'biochemistry 2',
+    ],
+    "3": [
+      "forensic chemistry",
+      "basic introduction of virus and medical fungi",
+    ],
+    "4": [
+      "histopathology and cytology",
+      "blood bank",
+      "parasitology",
+      "immunology",
+    ],
   };
 
   // ✅ Create Auth User
@@ -42,7 +55,11 @@ class _AdminAddStudentScreenState extends State<AdminAddStudentScreen> {
       'password': password,
       'returnSecureToken': false,
     });
-    final res = await http.post(url, body: body, headers: {'Content-Type': 'application/json'});
+    final res = await http.post(
+      url,
+      body: body,
+      headers: {'Content-Type': 'application/json'},
+    );
 
     if (res.statusCode == 200) {
       final data = json.decode(res.body);
@@ -90,7 +107,10 @@ class _AdminAddStudentScreenState extends State<AdminAddStudentScreen> {
   Future<void> fetchStudentByEmail(String email) async {
     setState(() => _loading = true);
     try {
-      final snapshot = await _fire.collection('users').where('email', isEqualTo: email).get();
+      final snapshot = await _fire
+          .collection('users')
+          .where('email', isEqualTo: email)
+          .get();
 
       if (snapshot.docs.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -107,7 +127,9 @@ class _AdminAddStudentScreenState extends State<AdminAddStudentScreen> {
         });
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("خطأ: $e")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("خطأ: $e")));
     }
     setState(() => _loading = false);
   }
@@ -117,10 +139,13 @@ class _AdminAddStudentScreenState extends State<AdminAddStudentScreen> {
     final password = _passController.text.trim();
     final views = int.tryParse(_viewsController.text.trim()) ?? 3;
 
-    if (email.isEmpty || password.isEmpty || _selectedYear == null || _selectedSubjects.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("يرجى ملء جميع الحقول")),
-      );
+    if (email.isEmpty ||
+        password.isEmpty ||
+        _selectedYear == null ||
+        _selectedSubjects.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("يرجى ملء جميع الحقول")));
       return;
     }
 
@@ -135,12 +160,14 @@ class _AdminAddStudentScreenState extends State<AdminAddStudentScreen> {
         remainingViews: views,
       );
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("تم إنشاء الطالب بنجاح!")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("تم إنشاء الطالب بنجاح!")));
       resetForm();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("خطأ: $e")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("خطأ: $e")));
     }
     setState(() => _loading = false);
   }
@@ -148,7 +175,9 @@ class _AdminAddStudentScreenState extends State<AdminAddStudentScreen> {
   Future<void> updateStudentFull() async {
     final views = int.tryParse(_viewsController.text.trim()) ?? 3;
 
-    if (_currentUid == null || _selectedYear == null || _selectedSubjects.isEmpty) {
+    if (_currentUid == null ||
+        _selectedYear == null ||
+        _selectedSubjects.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("يرجى اختيار طالب وتعبئة الحقول")),
       );
@@ -164,12 +193,14 @@ class _AdminAddStudentScreenState extends State<AdminAddStudentScreen> {
         remainingViews: views,
       );
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("تم تحديث بيانات الطالب!")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("تم تحديث بيانات الطالب!")));
       resetForm();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("خطأ: $e")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("خطأ: $e")));
     }
     setState(() => _loading = false);
   }
@@ -185,6 +216,96 @@ class _AdminAddStudentScreenState extends State<AdminAddStudentScreen> {
     });
   }
 
+  Future<void> deleteStudent() async {
+    if (_currentUid == null || _emailController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("يرجى البحث عن الطالب أولاً")),
+      );
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("تأكيد الحذف"),
+        content: const Text("هل أنت متأكد أنك تريد حذف هذا الطالب نهائياً؟"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("إلغاء"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("حذف"),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _loading = true);
+    try {
+      // 1️⃣ حذف من Firestore
+      await _fire.collection('users').doc(_currentUid).delete();
+
+      // 2️⃣ حذف من Firebase Auth (REST API)
+      await deleteAuthUserByEmail(email: _emailController.text.trim());
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("تم حذف الطالب بنجاح")));
+      resetForm();
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("خطأ أثناء الحذف: $e")));
+    }
+    setState(() => _loading = false);
+  }
+
+  Future<void> deleteAuthUserByEmail({required String email}) async {
+    try {
+      // أول حاجة نحصل على token عن طريق login
+      final loginUrl = Uri.parse(
+        'https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=$Firebase_WebApiKey',
+      );
+
+      final loginRes = await http.post(
+        loginUrl,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'email': email,
+          'password': _passController.text.trim(),
+          'returnSecureToken': true,
+        }),
+      );
+
+      if (loginRes.statusCode != 200) {
+        throw Exception('لم يتم تسجيل الدخول لحذف المستخدم: ${loginRes.body}');
+      }
+
+      final idToken = json.decode(loginRes.body)['idToken'];
+
+      // بعدين نحذف الحساب
+      final deleteUrl = Uri.parse(
+        'https://identitytoolkit.googleapis.com/v1/accounts:delete?key=$Firebase_WebApiKey',
+      );
+
+      final deleteRes = await http.post(
+        deleteUrl,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'idToken': idToken}),
+      );
+
+      if (deleteRes.statusCode != 200) {
+        throw Exception('فشل حذف المستخدم من Auth: ${deleteRes.body}');
+      }
+    } catch (e) {
+      throw Exception("فشل حذف المستخدم من Auth: $e");
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -198,7 +319,9 @@ class _AdminAddStudentScreenState extends State<AdminAddStudentScreen> {
         padding: const EdgeInsets.all(20),
         child: Card(
           elevation: 8,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           child: Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -211,24 +334,32 @@ class _AdminAddStudentScreenState extends State<AdminAddStudentScreen> {
             ),
             child: Column(
               children: [
-                CustomTextField(controller: _emailController, hint: "البريد الإلكتروني"),
+                CustomTextField(
+                  controller: _emailController,
+                  hint: "البريد الإلكتروني",
+                ),
                 const SizedBox(height: 12),
-                CustomTextField(controller: _passController, hint: "كلمة المرور", isPassword: true),
+                CustomTextField(
+                  controller: _passController,
+                  hint: "كلمة المرور",
+                  isPassword: true,
+                ),
                 const SizedBox(height: 12),
 
                 // زر البحث
                 ElevatedButton.icon(
-                  onPressed: () => fetchStudentByEmail(_emailController.text.trim()),
+                  onPressed: () =>
+                      fetchStudentByEmail(_emailController.text.trim()),
                   icon: const Icon(Icons.search),
                   style: ElevatedButton.styleFrom(
                     foregroundColor: Colors.white,
                     backgroundColor: Colors.blue[600],
                     minimumSize: const Size.fromHeight(45),
                   ),
-                  label: const Text("بحث عن طالب موجود",style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),),
+                  label: const Text(
+                    "بحث عن طالب موجود",
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
                 ),
                 const SizedBox(height: 20),
 
@@ -275,7 +406,10 @@ class _AdminAddStudentScreenState extends State<AdminAddStudentScreen> {
                   ),
                 const SizedBox(height: 12),
 
-                CustomTextField(controller: _viewsController, hint: "عدد المشاهدات المسموح بها"),
+                CustomTextField(
+                  controller: _viewsController,
+                  hint: "عدد المشاهدات المسموح بها",
+                ),
                 const SizedBox(height: 20),
 
                 _loading
@@ -290,10 +424,13 @@ class _AdminAddStudentScreenState extends State<AdminAddStudentScreen> {
                               foregroundColor: Colors.white,
                               minimumSize: const Size.fromHeight(45),
                             ),
-                            label: const Text("إضافة طالب",style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),),
+                            label: const Text(
+                              "إضافة طالب",
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           ),
                           const SizedBox(height: 12),
                           ElevatedButton.icon(
@@ -304,10 +441,30 @@ class _AdminAddStudentScreenState extends State<AdminAddStudentScreen> {
                               foregroundColor: Colors.white,
                               minimumSize: const Size.fromHeight(45),
                             ),
-                            label: const Text("تحديث بيانات الطالب",style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),),
+                            label: const Text(
+                              "تحديث بيانات الطالب",
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          ElevatedButton.icon(
+                            onPressed: deleteStudent,
+                            icon: const Icon(Icons.delete),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red,
+                              foregroundColor: Colors.white,
+                              minimumSize: const Size.fromHeight(45),
+                            ),
+                            label: const Text(
+                              "حذف الطالب",
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           ),
                         ],
                       ),

@@ -48,11 +48,11 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _loading = true);
     try {
       final user =
-          await _auth.signIn(_emailController.text, _passController.text);
+          await _auth.signIn(_emailController.text.trim(), _passController.text.trim());
 
       if (user != null) {
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString("userEmail", _emailController.text);
+        await prefs.setString("userEmail", _emailController.text.trim());
 
         if (_emailController.text.contains(AdminEmail)) {
           Navigator.pushReplacement(
