@@ -27,21 +27,57 @@ class _AdminAddStudentScreenState extends State<AdminAddStudentScreen> {
   final FirebaseFirestore _fire = FirebaseFirestore.instance;
 
   final Map<String, List<String>> subjectsByYear = {
-    "1": ["foundation", "organic chemistry", "anatomy", 'health informatics'],
+    "1": [
+      "foundation",
+      "organic chemistry",
+      "anatomy",
+      'health informatics',
+      'IT',
+      'Anatomy revision',
+      'Foundation revision',
+      'Biochemistry revision',
+      'Organic revision',
+      'Health informatics revision',
+      'Foundation Practical Revision',
+      'Foundation Final Revision',
+      'Anatomy practical Revesion',
+      'Anatomy Final Revision',
+      'Organic Practical Revision',
+      'Organic Final Revision',
+      'Health Informatics Practical Revision',
+      'Health Informatics Final Revision',
+    ],
     "2": [
       "basics of Molecular biology",
       "systemic physiology",
       'biochemistry 2',
+      'Biochemistry revision',
+      'Laboratory Safety',
+      'Biochemistry 2 Practical Revision',
+      'Biochemistry 2 Final Revision',
+
     ],
     "3": [
       "forensic chemistry",
       "basic introduction of virus and medical fungi",
+      'Forensic revision',
+      'Virology revision',
+      'Forensic Final Revision',
+      'Forensic Practical Revision',
+      'Virology Practical Revision',
+      'Virology Final Revision',
     ],
     "4": [
       "histopathology and cytology",
       "blood bank",
       "parasitology",
       "immunology",
+      'Immunology revision',
+      'Parasitology revision',
+      'Immunology Practical Revision',
+      'Immunology Final Revision',
+      'Parasitology Practical Revesion',
+      'Parasitology Final Revesion',
     ],
   };
 
